@@ -1,0 +1,5 @@
+{
+  "name": "Code Bundler Pro",
+  "description": "A professional tool to convert compressed archives (ZIP) into a single, well-formatted text file containing all your source code. Perfect for sharing projects with LLMs or creating codebase backups.",
+  "requestFramePermissions": []
+}
