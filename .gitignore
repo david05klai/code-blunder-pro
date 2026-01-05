@@ -29,3 +29,9 @@ dist-ssr
 # Firebase Admin key
 codebundler-pro-firebase-adminsdk-*.json
 
+# Nunca subir credenciales
+*.private.json
+*firebase-adminsdk*.json
+codebundler-pro-firebase-adminsdk-fbsvc-cc16bbd41a.json
+
+
