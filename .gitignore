@@ -25,3 +25,7 @@ dist-ssr
 
 .vercel
 .env*.local
+
+# Firebase Admin key
+codebundler-pro-firebase-adminsdk-*.json
+
