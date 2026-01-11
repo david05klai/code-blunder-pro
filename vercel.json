@@ -1,0 +1,8 @@
+{
+    "functions": {
+      "api/**/*.ts": {
+        "includeFiles": "api/_lib/**"
+      }
+    }
+  }
+  
