@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { db } from "./_lib/firebaseAdmin";
+import { db } from "./_lib/firebaseAdmin.js";
 import { mpAccessToken, webhookSecret, type PlanKey } from "./_lib/mp";
 
 function addMonths(date: Date, months: number) {

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { auth, db } from "./_lib/firebaseAdmin";
+import { auth, db } from "./_lib/firebaseAdmin.js";
 
 const VALID_CODES = [
   "FOUNDER2026",
