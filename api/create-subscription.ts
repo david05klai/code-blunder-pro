@@ -37,10 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const preapproval_plan_id = planIdFor(plan);
 
-    // Para volver después del checkout (tu app puede leer status desde el URL)
     const backUrl = `${appBaseUrl()}/billing/return?plan=${encodeURIComponent(plan)}`;
-
-    // Webhook (con secret tuyo para filtrar basura)
     const notification_url = `${appBaseUrl()}/api/webhooks?secret=${encodeURIComponent(webhookSecret())}`;
 
     const payload = {
@@ -63,10 +60,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const data = await r.json();
     if (!r.ok) {
+      console.error("MercadoPago API error:", data);
       return res.status(400).json({ error: "MercadoPago error", details: data });
     }
 
-    // Guardamos relación id -> uid para activar premium cuando llegue el webhook
     const preapprovalId: string | undefined = data?.id;
     if (preapprovalId) {
       await db()
@@ -84,13 +81,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         );
     }
 
+    console.log(`✅ Created subscription for user ${uid}, plan ${plan}`);
     return res.status(200).json({
       preapprovalId,
-      init_point: data?.init_point, // <- a este link lo mandas para pagar
+      init_point: data?.init_point,
       sandbox_init_point: data?.sandbox_init_point,
       status: data?.status,
     });
   } catch (e: any) {
+    console.error("create-subscription error:", e);
     return res.status(500).json({ error: e?.message || "Internal error" });
   }
 }

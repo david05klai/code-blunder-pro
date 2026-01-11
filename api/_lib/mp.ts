@@ -1,4 +1,4 @@
-type PlanKey = "PREMIUM_MONTHLY" | "PREMIUM_ANNUAL" | "API_MONTHLY" | "API_ANNUAL";
+export type PlanKey = "PREMIUM_MONTHLY" | "PREMIUM_ANNUAL" | "API_MONTHLY" | "API_ANNUAL";
 
 export function mpAccessToken() {
   const t = process.env.MP_ACCESS_TOKEN;
@@ -29,5 +29,3 @@ export function planIdFor(plan: PlanKey) {
   if (!id) throw new Error(`Missing plan env var for ${plan}`);
   return id;
 }
-
-export type { PlanKey };

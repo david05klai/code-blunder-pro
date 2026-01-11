@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://code-bundler-pro-1.vercel.app/

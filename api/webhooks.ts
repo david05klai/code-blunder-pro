@@ -14,47 +14,73 @@ function addYears(date: Date, years: number) {
   return d;
 }
 
-function computeUntil(now: Date, plan: PlanKey) {
-  if (plan === "PREMIUM_MONTHLY") return addMonths(now, 1);
-  if (plan === "PREMIUM_ANNUAL") return addYears(now, 1);
-  if (plan === "API_MONTHLY") return addMonths(now, 1);
-  if (plan === "API_ANNUAL") return addYears(now, 1);
-  return addMonths(now, 1);
+// ✅ CORREGIDO: Ahora extiende desde la fecha de vencimiento existente
+async function computeUntil(uid: string, plan: PlanKey): Promise<Date> {
+  const userDoc = await db().collection("users").doc(uid).get();
+  const userData = userDoc.data();
+
+  let baseDate = new Date();
+
+  // Si ya tiene premium/api activo, extender desde esa fecha
+  if (plan.startsWith("PREMIUM") && userData?.premiumUntil) {
+    const existingDate = new Date(userData.premiumUntil);
+    if (existingDate > baseDate) {
+      baseDate = existingDate;
+    }
+  } else if (!plan.startsWith("PREMIUM") && userData?.apiUntil) {
+    const existingDate = new Date(userData.apiUntil);
+    if (existingDate > baseDate) {
+      baseDate = existingDate;
+    }
+  }
+
+  if (plan === "PREMIUM_MONTHLY" || plan === "API_MONTHLY") {
+    return addMonths(baseDate, 1);
+  }
+  if (plan === "PREMIUM_ANNUAL" || plan === "API_ANNUAL") {
+    return addYears(baseDate, 1);
+  }
+
+  return addMonths(baseDate, 1);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    // 1) Filtro básico por secret
     const secret = (req.query.secret as string) || "";
     if (!secret || secret !== webhookSecret()) {
+      console.warn("Unauthorized webhook attempt");
       return res.status(401).json({ error: "Unauthorized webhook" });
     }
 
-    // MP manda varios formatos. Nosotros buscamos data.id
     const body = (req.body || {}) as any;
     const idFromBody = body?.data?.id || body?.id;
 
     if (!idFromBody) {
-      // Respondemos 200 para que MP no reintente infinito por payload raro
       return res.status(200).json({ ok: true, ignored: true });
     }
 
     const preapprovalId = String(idFromBody);
 
-    // 2) Consultar a MP para confirmar estado real
+    // ✅ Log del webhook recibido
+    await db().collection("mp_webhook_logs").add({
+      preapprovalId,
+      body,
+      receivedAt: new Date().toISOString(),
+    });
+
     const r = await fetch(`https://api.mercadopago.com/preapproval/${encodeURIComponent(preapprovalId)}`, {
       headers: { Authorization: `Bearer ${mpAccessToken()}` },
     });
 
     const pre = await r.json();
     if (!r.ok) {
+      console.error("Failed to fetch preapproval from MP:", pre);
       return res.status(200).json({ ok: true, mpFetchFailed: true, details: pre });
     }
 
-    const status = pre?.status; // authorized | pending | cancelled | paused ...
+    const status = pre?.status;
     const externalRef: string | undefined = pre?.external_reference;
 
-    // 3) Sacar uid/plan (prioridad: Firestore mapping, fallback: external_reference)
     const mapDoc = await db().collection("mp_preapprovals").doc(preapprovalId).get();
     const map = mapDoc.exists ? (mapDoc.data() as any) : null;
 
@@ -68,7 +94,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!uid || !plan) {
-      // Guardamos para debug, pero no activamos nada
       await db().collection("mp_webhook_orphans").doc(preapprovalId).set(
         {
           status,
@@ -80,11 +105,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, orphan: true });
     }
 
-    // 4) Si está autorizado => activar
+    // ✅ ACTIVAR O REVOCAR SEGÚN STATUS
     if (status === "authorized") {
-      const now = new Date();
-      const until = computeUntil(now, plan);
-
+      const until = await computeUntil(uid, plan);
       const userRef = db().collection("users").doc(uid);
 
       const updates: Record<string, any> = {
@@ -99,7 +122,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updates.apiUntil = until.toISOString();
       }
 
-      // guarda referencia del último estado MP
       await userRef.set(updates, { merge: true });
 
       await db().collection("mp_preapprovals").doc(preapprovalId).set(
@@ -110,10 +132,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         { merge: true }
       );
 
+      console.log(`✅ Activated ${plan} for user ${uid} until ${until.toISOString()}`);
       return res.status(200).json({ ok: true, activated: true });
     }
 
-    // 5) Si canceló/paused puedes decidir revocar. Por ahora solo registramos.
+    // ✅ REVOCAR SI CANCELADO/PAUSADO
+    if (status === "cancelled" || status === "paused") {
+      const userRef = db().collection("users").doc(uid);
+      const updates: Record<string, any> = {
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (plan.startsWith("PREMIUM")) {
+        updates.isPremium = false;
+        updates.premiumUntil = null;
+      } else {
+        updates.hasApiPlan = false;
+        updates.apiUntil = null;
+      }
+
+      await userRef.set(updates, { merge: true });
+
+      console.log(`❌ Revoked ${plan} for user ${uid} due to status: ${status}`);
+      return res.status(200).json({ ok: true, revoked: true, status });
+    }
+
     await db().collection("mp_preapprovals").doc(preapprovalId).set(
       {
         status,
@@ -124,8 +167,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ ok: true, activated: false, status });
   } catch (e: any) {
-    // Igual devuelve 200 para no reintentar infinito si hay error temporal,
-    // pero deja rastro en logs de Vercel.
+    console.error("webhook error:", e);
     return res.status(200).json({ ok: false, error: e?.message || "error" });
   }
 }

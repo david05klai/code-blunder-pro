@@ -16,7 +16,7 @@ const translations = {
     title: "Code Bundler Pro",
     subtitle: "Compress your codebase with intelligence. Filters, AI templates, and smart formatting.",
     upload: "Click to upload or drag & drop",
-    uploadSubtitle: "ZIP archives containing source code",
+    uploadSubtitle: "ZIP or RAR archives containing source code",
     analyzing: "Analyzing Archive...",
     largeProjectWarning: "Large projects may take longer...",
     reading: "Reading:",
@@ -28,7 +28,7 @@ const translations = {
     preview: "Bundle Preview",
     included: "Files Configuration",
     errorTitle: "Error Processing File",
-    errorZip: "Currently only .zip files are supported.",
+    errorZip: "Currently only .zip and .rar files are supported.",
     errorGeneric: "Failed to process archive.",
     tryAgain: "Try Another File",
     limitReached: "Free Limit Reached",
@@ -81,7 +81,7 @@ const translations = {
     title: "Code Bundler Pro",
     subtitle: "Comprime tu código con inteligencia. Filtros, plantillas IA y formato inteligente.",
     upload: "Haz clic para subir o arrastra y suelta",
-    uploadSubtitle: "Archivos ZIP con código fuente",
+    uploadSubtitle: "Archivos ZIP o RAR con código fuente",
     analyzing: "Analizando Archivo...",
     largeProjectWarning: "Proyectos grandes pueden tardar más...",
     reading: "Leyendo:",
@@ -93,7 +93,7 @@ const translations = {
     preview: "Vista Previa",
     included: "Configuración de Archivos",
     errorTitle: "Error al Procesar Archivo",
-    errorZip: "Actualmente solo se admiten archivos .zip.",
+    errorZip: "Actualmente solo se admiten archivos .zip y .rar.",
     errorGeneric: "No se pudo procesar el archivo.",
     tryAgain: "Intentar con otro archivo",
     limitReached: "Límite Gratuito Alcanzado",
@@ -187,6 +187,7 @@ const App: React.FC = () => {
   const [githubUrl, setGithubUrl] = useState("");
   const [reverseText, setReverseText] = useState("");
   const [currentFile, setCurrentFile] = useState("");
+  const [dragActive, setDragActive] = useState(false);
 
   // Firebase auth/user data
   const [user, setUser] = useState<User | null>(null);
@@ -407,11 +408,63 @@ const App: React.FC = () => {
     setFiles(prev => prev.map(f => f.path === path ? { ...f, selected: !f.selected } : f));
   };
 
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (!isPremium && attempts >= 3) return setStatus(AppStatus.LIMIT_REACHED);
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    const isZip = file.name.endsWith('.zip');
+    const isRar = file.name.endsWith('.rar');
+
+    if (!isZip && !isRar) {
+      setError(t.errorZip);
+      setStatus(AppStatus.ERROR);
+      return;
+    }
+
+    setCurrentFile("");
+    setArchiveName(file.name);
+    setStatus(AppStatus.PROCESSING);
+
+    try {
+      const loaded = await loadZipFiles(file);
+      setFiles(loaded);
+      setCurrentFile("");
+      setStatus(AppStatus.LOADED);
+    } catch (err) {
+      setError(t.errorGeneric);
+      setStatus(AppStatus.ERROR);
+    }
+  };
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!isPremium && attempts >= 3) return setStatus(AppStatus.LIMIT_REACHED);
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!file.name.endsWith('.zip')) return (setError(t.errorZip), setStatus(AppStatus.ERROR));
+
+    const isZip = file.name.endsWith('.zip');
+    const isRar = file.name.endsWith('.rar');
+
+    if (!isZip && !isRar) {
+      setError(t.errorZip);
+      setStatus(AppStatus.ERROR);
+      return;
+    }
 
     setCurrentFile("");
     setArchiveName(file.name);
@@ -611,13 +664,28 @@ const App: React.FC = () => {
             </div>
 
             {mode === 'bundle' && (
-              <label className="flex flex-col items-center justify-center w-full h-80 border-2 border-dashed border-slate-700 rounded-[3rem] cursor-pointer bg-slate-900/30 hover:bg-slate-900/50 transition-all hover:border-indigo-500/50 group shadow-2xl">
-                <div className="p-8 bg-slate-800 rounded-full mb-6 group-hover:scale-110 transition-transform shadow-xl border border-slate-700">
-                  <Upload className="w-12 h-12 text-indigo-400" />
+              <label 
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                className={`flex flex-col items-center justify-center w-full h-80 border-2 border-dashed rounded-[3rem] cursor-pointer transition-all group shadow-2xl ${
+                  dragActive 
+                    ? 'border-indigo-500 bg-indigo-500/10 scale-[1.02]' 
+                    : 'border-slate-700 bg-slate-900/30 hover:bg-slate-900/50 hover:border-indigo-500/50'
+                }`}>
+                <div className={`p-8 bg-slate-800 rounded-full mb-6 transition-all shadow-xl border ${
+                  dragActive 
+                    ? 'scale-110 border-indigo-500 shadow-indigo-500/50' 
+                    : 'group-hover:scale-110 border-slate-700'
+                }`}>
+                  <Upload className={`w-12 h-12 transition-colors ${
+                    dragActive ? 'text-indigo-300 animate-bounce' : 'text-indigo-400'
+                  }`} />
                 </div>
                 <span className="text-2xl font-bold text-white mb-2">{t.upload}</span>
                 <span className="text-slate-500">{t.uploadSubtitle}</span>
-                <input type="file" className="hidden" accept=".zip" onChange={handleFileUpload} />
+                <input type="file" className="hidden" accept=".zip,.rar" onChange={handleFileUpload} />
               </label>
             )}
 
