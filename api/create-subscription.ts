@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { auth, db } from "./_lib/firebaseAdmin.js";
+import { auth, db } from "./firebaseAdmin.js";
 import { appBaseUrl, mpAccessToken, planIdFor, webhookSecret, type PlanKey } from "./_lib/mp";
 
 type Body = {
